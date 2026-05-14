@@ -54,6 +54,13 @@ public: // Scheduler ve Memory Manager gibi diğer alt sistemler bu verilere
       held_resources; // Sürecin şu an elinde tuttuğu (başkasının kullanmasını
                       // engellediği) kaynakların (Örn: tabloların) listesi.
 
+  // 4. I/O SİMÜLASYON BİLGİSİ
+  // Gerçek bir std::thread uyutmak yerine, süreci BLOCKED durumuna alıp
+  // ne kadar süre beklemesi gerektiğini burada tutuyoruz.
+  // Scheduler veya ana döngü bu değeri her tick azaltır; 0'a ulaşınca
+  // süreç tekrar READY durumuna geçer.
+  int io_wait_ms; // Kalan I/O bekleme süresi (milisaniye). 0 ise bekleme yok.
+
   // Kurucu fonksiyon (Constructor): İşletim sistemine yeni bir süreç
   // eklendiğinde ilk varsayılan değerlerini atamak için çalışır.
   Process(int id, std::string n, int prio, int burst) {
@@ -66,6 +73,20 @@ public: // Scheduler ve Memory Manager gibi diğer alt sistemler bu verilere
                            // doğduğunda ilk olarak NEW (Yeni) durumunda başlar.
     waiting_for_resource = -1; // -1 atayarak başlangıçta hiçbir veritabanı
                                // kaynağını beklemediğini ifade ediyoruz.
+    io_wait_ms = 0;            // Başlangıçta I/O beklemesi yok.
+  }
+
+  // I/O bekleme tick'i: her döngüde çağrılır.
+  // 'elapsed_ms' kadar süre geçtiğini varsayarak io_wait_ms'i azaltır.
+  // Süre dolduğunda süreci BLOCKED'tan READY'e geçirir.
+  void tick_io(int elapsed_ms) {
+    if (state == ProcessState::BLOCKED && io_wait_ms > 0) {
+      io_wait_ms -= elapsed_ms;
+      if (io_wait_ms <= 0) {
+        io_wait_ms = 0;
+        state = ProcessState::READY; // I/O bitti, süreç tekrar CPU kuyruğuna girer.
+      }
+    }
   }
 }; // Sınıf (class) tanımının sonu. C++ kuralları gereği noktalı virgül ile
    // bitmek zorundadır.

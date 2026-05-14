@@ -1,35 +1,47 @@
-#ifndef SCHEDULER_H // Eğer bu başlık dosyası projede birden fazla kez
-                    // çağrılırsa, kodların çift tanımlanmasını engeller.
-                    // (Include Guard)
-#define SCHEDULER_H // Derleyiciye bu dosyanın okunduğunu bildirir.
+#ifndef SCHEDULER_H
+#define SCHEDULER_H
 
-#include "process.h" // Süreç yapısını (PCB) kullanmak için kendi dosyamızı dahil ediyoruz.
-#include <iostream> // Ekrana log (çıktı) yazdırmak için gerekli kütüphane.
-#include <queue> // Hazır (READY) süreçleri bir kuyrukta tutmak için standart kütüphaneyi ekliyoruz.
-#include <vector> // Sistemdeki tüm süreçlerin genel bir listesini tutmak için kullanacağız.
+#include "process.h"
+#include "filesystem.h"
+#include "memory.h"
+#include <iostream>
+#include <queue>
+#include <vector>
+#include <map>
+#include <chrono>
+#include <thread>
 
-
-// Scheduler (Zamanlayıcı) sınıfı: İşletim sisteminin kalbidir. Hangi sürecin ne
-// zaman CPU'da çalışacağına karar verir.
+// Scheduler (Zamanlayici) sinifi: Isletim sisteminin kalbidir.
 class Scheduler {
-private: // Dışarıdan doğrudan müdahaleyi engellemek için private (Kapsülleme -
-         // Encapsulation) kullanıyoruz.
-  std::queue<Process *>
-      ready_queue; // Sadece READY durumundaki süreçlerin işaretçilerini
-                   // (pointer) tutan kuyruk. Bellek tasarrufu için pointer
-                   // kullanıyoruz.
-  std::vector<Process *>
-      all_processes; // Sistemdeki tüm süreçlerin kaydını tuttuğumuz ana liste
-                     // (İleride Deadlock dedektörü bu listeyi tarayacak).
+private:
+    std::queue<Process*>  ready_queue;
+    std::vector<Process*> all_processes;
 
-public: // Sınıf dışından (örneğin main.cpp'den) erişilebilecek fonksiyonlar.
-  Scheduler(); // Kurucu fonksiyon (Constructor). Sınıf çağrıldığında ilk
-               // çalışan fonksiyondur.
+public:
+    Scheduler();
 
-  void add_process(Process *p); // Sisteme yeni bir süreç (Örn: Veritabanı
-                                // sorgusu) ekleyen fonksiyon.
-  void run_fifo(); // Baseline (Temel) algoritmamız: First-In-First-Out (İlk
-                   // gelen ilk çalışır) mantığını yürüten fonksiyon.
-}; // C++ kuralları gereği sınıf tanımlaması noktalı virgül ile biter.
+    void add_process(Process* p);
+    void run_fifo();
 
-#endif // SCHEDULER_H tanımının sonu.
+    // I/O-Aware + Page Fault-Aware FIFO Scheduler.
+    // 'fs'           : FileSystem (dosya kilitleri icin)
+    // 'io_requests'  : { pid -> dosya adi } (I/O yapacak processler)
+    // 'mm'           : MemoryManager (page fault simulasyonu icin, nullptr = devre disi)
+    // 'page_requests': { pid -> sayfa_id } (page fault tetiklenecek processler)
+    // 'tick_ms'      : simulasyon tick suresi (ms)
+    void run_with_io(FileSystem& fs,
+                     const std::map<int, std::string>& io_requests,
+                     int tick_ms = 500,
+                     MemoryManager* mm = nullptr,
+                     const std::map<int, int>& page_requests = {});
+
+    // Round Robin Scheduler (I/O + Page Fault aware).
+    void run_round_robin(FileSystem& fs,
+                         const std::map<int, std::string>& io_requests,
+                         int quantum_ms = 2000,
+                         int tick_ms    = 500,
+                         MemoryManager* mm = nullptr,
+                         const std::map<int, int>& page_requests = {});
+};
+
+#endif // SCHEDULER_H

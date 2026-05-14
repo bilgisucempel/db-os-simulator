@@ -1,33 +1,36 @@
-#ifndef MEMORY_H // Başlık dosyasının çift derlenmesini önleyen güvenlik kalkanı
-                 // (Include Guard).
-#define MEMORY_H // Derleyiciye dosyanın işlendiğini bildirir.
+#ifndef MEMORY_H
+#define MEMORY_H
 
-#include <algorithm> // Vektörler içinde arama ve silme yapmak için standart algoritma kütüphanesi.
-#include <iostream> // Gözlemlenebilirlik (Observability) için loglama yapmamızı sağlar.
-#include <vector> // RAM'deki sayfaların listesini tutmak için dinamik dizi kullanıyoruz.
+#include <algorithm>
+#include <iostream>
+#include <vector>
+#include "process.h"
 
+// Page Fault I/O suresi (ms): Diskten RAM'e sayfa yuklemesi icin bekleme suresi.
+// Gercek sistemlerde bu sure I/O'dan cok daha uzun olabilir.
+static const int PAGE_FAULT_IO_MS = 3000;
 
-// Bellek Yöneticisi Sınıfı (Memory Manager) - ENHANCED (Geliştirilmiş) Sürüm
-// Baseline (Temel - FIFO) modelin yerine, zeki bir LRU (Least Recently Used)
-// algoritması kullanır.
+// Bellek Yoneticisi Sinifi (Memory Manager) - LRU (Least Recently Used)
+// Process tabanli Page Fault simulasyonu:
+//   - Page Hit  : process devam eder.
+//   - Page Fault: process BLOCKED + io_wait_ms = PAGE_FAULT_IO_MS atanir.
+//     Scheduler tick_io() ile süreci takip eder; sure dolunca READY olur.
 class MemoryManager {
-private: // Bellek bloklarına izinsiz müdahaleyi engelliyoruz (Encapsulation).
-  int ram_capacity; // İşletim sistemimizin RAM kapasitesi (Maksimum sayfa
-                    // sayısı).
-
-  // LRU Mantığı: Bu vektörün EN BAŞI (index 0) 'En Eski / En Az Kullanılan',
-  // EN SONU ise 'En Yeni / En Son Kullanılan' sayfayı temsil edecek.
-  std::vector<int> loaded_pages;
+private:
+    int              ram_capacity;  // Maks. sayfa sayisi
+    std::vector<int> loaded_pages;  // Sol=en eski, sag=en yeni (LRU)
 
 public:
-  MemoryManager(int capacity); // Kurucu fonksiyon.
+    MemoryManager(int capacity);
 
-  // Süreçlerin sayfaya erişimini sağlar ve LRU algoritmasını beyninde
-  // çalıştırır.
-  bool access_page(int page_id);
+    // Sayfaya erisim:
+    //  - Page Hit  : true  doner, process etkilenmez.
+    //  - Page Fault: false doner, process BLOCKED yapilir (io_wait_ms set).
+    //    p == nullptr ise eski davranis: sadece log, bloklama yok.
+    bool access_page(int page_id, Process* p = nullptr);
 
-  // RAM dolduğunda 'En Az Yakın Zamanda Kullanılan' sayfayı tespit edip siler.
-  void evict_page();
+    // RAM dolunca LRU sayfayi sil.
+    void evict_page();
 };
 
-#endif // MEMORY_H sonu.
+#endif // MEMORY_H

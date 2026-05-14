@@ -1,69 +1,67 @@
-#include "../include/memory.h" // Akıllı (LRU destekli) bellek başlık dosyamızı dahil ediyoruz.
+#include "../include/memory.h"
 
-// Kurucu fonksiyon: İşletim sistemi başlatılırken RAM kapasitesi atanır.
-MemoryManager::MemoryManager(int capacity) {
-  ram_capacity = capacity;
-  std::cout << "[Memory] Bellek Yoneticisi baslatildi. Algoritma: LRU "
-               "(Enhanced). Kapasite: "
-            << ram_capacity << " sayfa." << std::endl;
+MemoryManager::MemoryManager(int capacity) : ram_capacity(capacity) {
+    std::cout << "[Memory] Bellek Yoneticisi baslatildi. Algoritma: LRU. Kapasite: "
+              << ram_capacity << " sayfa." << std::endl;
 }
 
-// Bir sürecin veritabanındaki bir sayfaya (veri bloğuna) erişim isteği.
-bool MemoryManager::access_page(int page_id) {
-  auto it = std::find(loaded_pages.begin(), loaded_pages.end(), page_id);
+bool MemoryManager::access_page(int page_id, Process* p) {
+    auto it = std::find(loaded_pages.begin(), loaded_pages.end(), page_id);
 
-  // 1. ADIM: PAGE HIT (Sayfa RAM'de var)
-  if (it != loaded_pages.end()) {
-    std::cout << "[Memory] PAGE HIT: Sayfa-" << page_id << " RAM'de mevcut."
-              << std::endl;
+    // -------------------------------------------------------
+    // PAGE HIT: Sayfa RAM'de mevcut
+    // -------------------------------------------------------
+    if (it != loaded_pages.end()) {
+        std::cout << "[Memory] PAGE HIT: Sayfa-" << page_id << " RAM'de mevcut." << std::endl;
 
-    // --- GELİŞMİŞ TASARIM (ENHANCED DESIGN): LRU GÜNCELLEMESİ ---
-    // Madem bu sayfa şu an kullanıldı, artık 'En Eski' değil, 'En Yeni' sayfa
-    // oldu! Bu yüzden onu eski konumundan siliyor ve vektörün EN SONUNA
-    // (güvenli bölgeye) taşıyoruz.
-    loaded_pages.erase(it);
-    loaded_pages.push_back(page_id);
+        // LRU: kullanilanı en sona tas (en yeni)
+        loaded_pages.erase(it);
+        loaded_pages.push_back(page_id);
 
-    std::cout
-        << "         -> [LRU] Sayfa-" << page_id
-        << " 'En Yeni Kullanilan' olarak isaretlendi (Silinmekten kurtuldu)."
-        << std::endl;
-    return true;
-  }
-  // 2. ADIM: PAGE FAULT (Sayfa RAM'de yok, diskten gelecek)
-  else {
+        std::cout << "         -> [LRU] Sayfa-" << page_id
+                  << " 'En Yeni Kullanilan' olarak isaretlendi (Silinmekten kurtuldu)."
+                  << std::endl;
+        return true; // Process etkilenmez, devam eder
+    }
+
+    // -------------------------------------------------------
+    // PAGE FAULT: Sayfa RAM'de yok, diskten getirilmeli
+    // -------------------------------------------------------
     std::cout << "[Memory] PAGE FAULT: Sayfa-" << page_id
               << " RAM'de bulunamadi! Diskten getiriliyor..." << std::endl;
 
-    // RAM tamamen doluysa, en eskiyi kovmak için fonksiyonu çağır.
-    if (loaded_pages.size() >= ram_capacity) {
-      std::cout << "[Memory] UYARI: RAM tamamen dolu! Yeni sayfa icin yer "
-                   "acilmasi gerekiyor."
-                << std::endl;
-      evict_page();
+    // RAM doluysa LRU sayfayi tahliye et
+    if ((int)loaded_pages.size() >= ram_capacity) {
+        std::cout << "[Memory] UYARI: RAM tamamen dolu! Yer aciliyor (LRU Eviction)." << std::endl;
+        evict_page();
     }
 
-    // Yeni sayfayı RAM'in en sonuna (yani 'En Yeni' konumuna) ekliyoruz.
+    // Sayfayi RAM'e yukle
     loaded_pages.push_back(page_id);
     std::cout << "[Memory] Sayfa-" << page_id
-              << " diskten RAM'e yuklendi ve 'En Yeni' olarak isaretlendi."
-              << std::endl;
-    return false;
-  }
+              << " diskten RAM'e yuklendi." << std::endl;
+
+    // Process verilmisse: page fault suresi kadar BLOCKED yap
+    if (p != nullptr) {
+        p->io_wait_ms = PAGE_FAULT_IO_MS;
+        p->state      = ProcessState::BLOCKED;
+        std::cout << "[Memory] PAGE FAULT BLOKLAMA: " << p->name
+                  << " (PID: " << p->process_id
+                  << ") BLOCKED durumuna alindi (io_wait_ms = "
+                  << PAGE_FAULT_IO_MS << " ms)." << std::endl;
+        std::cout << "[Memory] Sayfa yukleme tamamlandiginda Scheduler süreci uyandıracak."
+                  << std::endl;
+    }
+
+    std::cout << "-----------------------------------" << std::endl;
+    return false; // Page fault: process bloklandi
 }
 
-// RAM dolduğunda "En Az Yakın Zamanda Kullanılan" (Least Recently Used) sayfayı
-// silen fonksiyon.
 void MemoryManager::evict_page() {
-  if (!loaded_pages.empty()) {
-    // LRU algoritmamız sayesinde vektörün en başındaki eleman her zaman 'En Az
-    // Bakılan' sayfadır.
-    int evicted = loaded_pages.front();
-
-    // O zavallı, unutulmuş sayfayı RAM'den siliyoruz.
-    loaded_pages.erase(loaded_pages.begin());
-
-    std::cout << "[Memory] EVICTION (LRU): En uzun suredir kullanilmayan Sayfa-"
-              << evicted << " RAM'den silindi." << std::endl;
-  }
+    if (!loaded_pages.empty()) {
+        int evicted = loaded_pages.front();
+        loaded_pages.erase(loaded_pages.begin());
+        std::cout << "[Memory] EVICTION (LRU): En uzun suredir kullanilmayan Sayfa-"
+                  << evicted << " RAM'den silindi." << std::endl;
+    }
 }
